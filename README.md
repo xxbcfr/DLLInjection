@@ -1,0 +1,40 @@
+# 远程线程注入
+
+远程线程注入是通过CreateRemoteThread函数在目标进程中创建一个线程，这个线程执行LoadLibrary函数加载DLL,达到在某个特定进程的空间中插入一个DLL映像的目的
+
+- 通过进程id，获取进程的句柄
+- 通过进程句柄，开辟一段内存空间用于存储注入的DLL的完整路径
+- 利用GetProcessAddresss函数获取Loadlibrary地址（不会受到ALSR机制影响）
+- 通过远程线程，使用LoadLibrary函数加载dll
+
+# APC注入
+
+APC是异步过程调用是WINDOWS操作系统的一种机制，每个线程都有一个附加的APC队列，当线程处于可提醒的等待状态时会将会处理，而APC注入即在目标进程的某个具有可提醒IO的线程中将LoadLibrary函数插入APC队列，达到注入Dll的目的
+
+- 通过进程id，获取进程的句柄
+- 通过进程句柄，开辟一段内存空间用于存储注入的DLL的完整路径
+- 通过TlHelper扫描出目标进程的线程（这个线程一般含有SleepEx或WaitForSingleObjectEX函数）
+- 利用QueueUserAPC函数插入LoadLibrary函数指针，当线程恢复时会执行APC队列中被注册的函数，注入DLL
+
+# 挂起线程注入
+
+挂起线程注入是向目标进程中写入一段用于加载DLL的ShellCode，再将线程进行挂起，改变线程的背景上下文，将执行处设置为ShellCode的位置处，恢复线程达到注入DLL的目的
+
+# SetWindowsHookEx注入
+
+SetWindowsHookEx注入主要的原理是通过消息机制，可以通过这个函数来设置消息钩子，既可设置当前进程的消息钩子，也可设置全局的消息钩子
+
+- 通过进程id，获取进程的句柄
+- 通过进程id，获取目标进程的线程id
+- 在当前进程加载DLL，获取dll的导出函数地址
+- 通过SetWindowsHookEx在当前进程设置消息钩子，设置消息（键盘消息）在目标进程的线程上
+
+- 再通过UnhookWindowsHookEx进行解绑，删除消息钩子，然后再释放DLL
+
+这种间接使用SetWindowsHookEx函数可以达到让目标进程通过消息执行DLL中的某个导出函数的目的
+
+# 注册表注入
+
+注册表注入利用了当User32.dll被映射到一个新的进程时，会收到DLL_PROCESS_ATTACH通知，会取得上述注册表AppInit_DLLs键的值，并调用LoadLibrary来载入这个字符串中指定的每个DLL的机制，通过更改AppInit_DLLs键的值，达到注入DLL的效果
+
+这个注入是全局的，将需要注入的DLL的完整路径写入注册表的AppInit_DLLs键的值即可
